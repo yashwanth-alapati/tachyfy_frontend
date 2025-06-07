@@ -15,14 +15,14 @@ const Chat: React.FC = () => {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
-
+  const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:8000";
   const sendMessage = async () => {
     if (!input.trim()) return;
     const userMessage: Message = { sender: "user", text: input };
     setMessages((msgs) => [...msgs, userMessage]);
 
     // Call backend
-    const response = await fetch("http://localhost:8000/chat", {
+    const response = await fetch(`${apiUrl}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: input }),
