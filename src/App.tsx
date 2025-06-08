@@ -4,7 +4,7 @@ import Chat from "./Chat";
 import Header from "./Header";
 import Login from "./Login";
 import Signup from "./Signup";
-
+import CreateTask from "./CreateTask";
 function App() {
   return (
     <Router>
@@ -14,6 +14,7 @@ function App() {
           <Route path="/" element={<Chat />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
+          <Route path="/tasks" element={<CreateTask />} />
         </Routes>
       </div>
     </Router>
