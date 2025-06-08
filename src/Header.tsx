@@ -1,53 +1,95 @@
 import React from "react";
-import { Link } from "react-router-dom";
-import AuthButtons from "./AuthButtons";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "./AuthContext";
 
-const Header: React.FC = () => (
-  <header style={{
-    width: "100%",
-    height: 70,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    position: "relative",
-    borderBottom: "none",
+const Header: React.FC = () => {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const blackButtonStyle = {
+    padding: "6px 16px",
+    borderRadius: 6,
+    border: "none",
+    background: "#222",
+    color: "#fff",
+    fontWeight: 600,
+    fontSize: 16,
+    textDecoration: "none" as const,
+    marginRight: 8,
+    boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+    cursor: "pointer"
+  };
+
+  const logoutButtonStyle = {
+    ...blackButtonStyle,
     background: "#f7df02",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.07)",
-    fontFamily: "Inter, Segoe UI, Arial, sans-serif",
-    zIndex: 10
-  }}>
-    <div style={{ marginLeft: 32 }}>
-      <Link to="/" style={{ textDecoration: "none" }}>
-        <button style={{
-          background: "#fff",
+    color: "#222",
+    marginRight: 0
+  };
+
+  // If not logged in, clicking Tasks redirects to login
+  const handleTasksClick = (e: React.MouseEvent) => {
+    if (!user) {
+      e.preventDefault();
+      navigate("/login");
+    }
+  };
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login");
+  };
+
+  return (
+    <header
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "16px 32px",
+        background: "#f7df02",
+        boxShadow: "0 2px 12px rgba(0,0,0,0.08)",
+        position: "sticky",
+        top: 0,
+        zIndex: 100,
+      }}
+    >
+      <Link
+        to="/"
+        style={{
+          fontWeight: 700,
+          fontSize: 22,
           color: "#222",
-          border: "none",
-          borderRadius: 8,
-          padding: "10px 22px",
-          fontWeight: 600,
-          fontSize: 16,
-          boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
-          cursor: "pointer",
-          transition: "background 0.2s"
-        }}>Home</button>
+          textDecoration: "none",
+          letterSpacing: 1,
+        }}
+      >
+        easydoAI
       </Link>
-    </div>
-    <div style={{
-      position: "absolute",
-      left: "50%",
-      transform: "translateX(-50%)",
-      fontWeight: 900,
-      fontSize: 28,
-      letterSpacing: 2,
-      color: "#222",
-      fontFamily: "Inter, Segoe UI, Arial, sans-serif"
-    }}>
-      <Link to="/" style={{ textDecoration: "none", color: "inherit" }}>
-        easydo.ai
-      </Link>
-    </div>
-    <AuthButtons />
-  </header>
-);
+      <div>
+        <Link to="/tasks" style={blackButtonStyle} onClick={handleTasksClick}>
+          Tasks
+        </Link>
+        {user ? (
+          <>
+            <span style={{ marginRight: 16, color: "#222", fontWeight: 500 }}>{user}</span>
+            <button onClick={handleLogout} style={logoutButtonStyle}>
+              Logout
+            </button>
+          </>
+        ) : (
+          <>
+            <Link to="/login" style={blackButtonStyle}>
+              Login
+            </Link>
+            <Link to="/signup" style={blackButtonStyle}>
+              Signup
+            </Link>
+          </>
+        )}
+      </div>
+    </header>
+  );
+};
 
 export default Header;

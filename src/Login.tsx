@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-
+import { useAuth } from "./AuthContext";
+import { useNavigate } from "react-router-dom";
 const API_BASE = process.env.REACT_APP_API_URL;
 
 const Login: React.FC = () => {
@@ -7,6 +8,8 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const { login } = useAuth();
+  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,6 +26,8 @@ const Login: React.FC = () => {
         setError(data.detail || "Login failed");
       } else {
         setSuccess("Login successful!");
+        login(email);
+        navigate("/tasks");
       }
     } catch (err) {
       setError("Network error");
