@@ -2,31 +2,6 @@ import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 
-const theme = {
-  primary: "#f7df02",      // Your signature yellow
-  primaryDark: "#e6c800",  // Darker yellow for hover
-  secondary: "#222",       // Black
-  success: "#22c55e",      // Green for success states
-  warning: "#f59e0b",      // Orange for warnings
-  error: "#ef4444",        // Red for errors
-  gray: {
-    50: "#f9fafb",
-    100: "#f3f4f6", 
-    200: "#e5e7eb",
-    300: "#d1d5db",
-    500: "#6b7280",
-    900: "#111827"
-  }
-}
-
-const typography = {
-  h1: { fontSize: "2.5rem", fontWeight: 700, lineHeight: 1.2 },
-  h2: { fontSize: "2rem", fontWeight: 600, lineHeight: 1.3 },
-  h3: { fontSize: "1.5rem", fontWeight: 600, lineHeight: 1.4 },
-  body: { fontSize: "1rem", lineHeight: 1.6 },
-  small: { fontSize: "0.875rem", lineHeight: 1.5 }
-}
-
 const Header: React.FC = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -44,13 +19,6 @@ const Header: React.FC = () => {
     marginRight: 8,
     boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
     cursor: "pointer"
-  };
-
-  const logoutButtonStyle = {
-    ...blackButtonStyle,
-    background: "#f7df02",
-    color: "#222",
-    marginRight: 0
   };
 
   const profileButtonStyle = {
