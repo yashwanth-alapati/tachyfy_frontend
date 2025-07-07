@@ -9,14 +9,16 @@ const Chat: React.FC = () => {
   const navigate = useNavigate();
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim()) return;
+    if (!input.trim() || loading) return;
     if (!user) {
       navigate("/login");
       return;
     }
+    setLoading(true);
     // Create a new task with the message
     const res = await fetch(`${API_BASE}/tasks`, {
       method: "POST",
@@ -26,6 +28,7 @@ const Chat: React.FC = () => {
     const newTask = await res.json();
     setMessages(newTask.messages || []);
     setInput("");
+    setLoading(false);
   };
 
   return (
@@ -37,9 +40,10 @@ const Chat: React.FC = () => {
           onChange={e => setInput(e.target.value)}
           style={{ width: "70%", padding: 10, borderRadius: 6, border: "1px solid #ddd" }}
           placeholder="Type your query..."
+          disabled={loading}
         />
-        <button type="submit" style={{ marginLeft: 12, padding: "10px 24px", borderRadius: 6, background: "#222", color: "#fff", border: "none" }}>
-          Send
+        <button type="submit" style={{ marginLeft: 12, padding: "10px 24px", borderRadius: 6, background: "#222", color: "#fff", border: "none" }} disabled={loading}>
+          {loading ? "Loading..." : "Send"}
         </button>
       </form>
       <div>
