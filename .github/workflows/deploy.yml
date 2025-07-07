@@ -35,3 +35,9 @@ jobs:
 
       - name: Deploy to S3
         run: aws s3 sync build/ s3://${{ secrets.S3_BUCKET }}/ --delete
+
+      - name: Configure S3 for React Router
+        run: |
+          aws s3 website s3://${{ secrets.S3_BUCKET }} \
+            --index-document index.html \
+            --error-document index.html
