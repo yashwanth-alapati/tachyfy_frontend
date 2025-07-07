@@ -6,6 +6,7 @@ import Login from "./Login";
 import Signup from "./Signup";
 import TaskList from "./TaskList";
 import TaskChat from "./TaskChat";
+import Profile from "./Profile";
 import { AuthProvider } from "./AuthContext";
 
 function App() {
@@ -20,6 +21,7 @@ function App() {
             <Route path="/signup" element={<Signup />} />
             <Route path="/tasks" element={<TaskList />} />
             <Route path="/tasks/:id" element={<TaskChat />} />
+            <Route path="/profile" element={<Profile />} />
           </Routes>
         </div>
       </Router>
