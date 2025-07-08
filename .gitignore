@@ -9,3 +9,4 @@ yarn-error.log*
 
 .aws/
 *.pem
++.git_broken_backup/
