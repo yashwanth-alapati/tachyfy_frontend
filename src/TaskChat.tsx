@@ -18,7 +18,7 @@ const TaskChat: React.FC = () => {
   const { id } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<any[]>([]); // ✅ Ensure it's always an array
   const [input, setInput] = useState("");
   const [showTools, setShowTools] = useState(false);
   const [search, setSearch] = useState("");
@@ -56,9 +56,22 @@ const TaskChat: React.FC = () => {
       navigate("/login");
       return;
     }
-    fetch(`${API_BASE}/tasks/${id}/messages`)
-      .then(res => res.json())
-      .then(setMessages);
+    const fetchMessages = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/tasks/${id}/messages`);
+        if (!res.ok) {
+          throw new Error(`Server responded with ${res.status}`);
+        }
+        const data = await res.json();
+        // ✅ Expects an object: { messages: [msg1, msg2, ...] }
+        setMessages(data.messages || []); 
+      } catch (err: any) {
+        console.error("Error fetching messages:", err);
+        // Optionally set an error state if needed
+      }
+    };
+
+    fetchMessages();
   }, [id, user, navigate]);
 
   const handleSend = async (e: React.FormEvent) => {
@@ -74,13 +87,18 @@ const TaskChat: React.FC = () => {
       const res = await fetch(`${API_BASE}/tasks/${id}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: input }),
+        body: JSON.stringify({ message: input, email: user }), // ✅ Pass email
       });
+
+      if (!res.ok) {
+        throw new Error(`Server responded with ${res.status}`);
+      }
+
       const data = await res.json();
-      setMessages(data.messages);
+      setMessages(data.messages || []); // ✅ Gracefully handle missing messages
       setInput("");
-    } catch (error) {
-      console.error("Error sending message:", error);
+    } catch (err: any) {
+      console.error("Error sending message:", err);
       // Remove the user message if there was an error
       setMessages(prev => prev.slice(0, -1));
     } finally {

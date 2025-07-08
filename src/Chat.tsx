@@ -20,6 +20,7 @@ const Chat: React.FC = () => {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null); // ✅ Track session
   const [showTools, setShowTools] = useState(false);
   const [search, setSearch] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -40,13 +41,24 @@ const Chat: React.FC = () => {
     setMessages(prev => [...prev, userMessage]);
     
     try {
-      // Create a new task with the message
-      const res = await fetch(`${API_BASE}/tasks`, {
+      // ✅ Build URL with session_id if we have one
+      let url = `${API_BASE}/tasks`;
+      if (currentSessionId) {
+        url += `?session_id=${currentSessionId}`;
+      }
+      
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: input, email: user }),
       });
       const newTask = await res.json();
+      
+      // ✅ Store session ID from first response
+      if (!currentSessionId && newTask.session_id) {
+        setCurrentSessionId(newTask.session_id);
+      }
+      
       setMessages(newTask.messages || []);
       setInput("");
     } catch (error) {
@@ -107,6 +119,13 @@ const Chat: React.FC = () => {
     };
   }, [showTools]);
 
+  // ✅ Add function to start new chat
+  const startNewChat = () => {
+    setCurrentSessionId(null);
+    setMessages([]);
+    setInput("");
+  };
+  
   return (
     <div style={{ 
       maxWidth: 800, 
@@ -129,6 +148,24 @@ const Chat: React.FC = () => {
         <p style={{ color: "#666", fontSize: 16 }}>
           Ask me anything! I can help with emails, calendar, tasks, and much more.
         </p>
+        {/* ✅ Add New Chat button if there's an active session */}
+        {currentSessionId && (
+          <button
+            onClick={startNewChat}
+            style={{
+              marginTop: 8,
+              padding: "6px 12px",
+              borderRadius: 6,
+              border: "1px solid #e5e7eb",
+              background: "#fff",
+              color: "#666",
+              cursor: "pointer",
+              fontSize: 14
+            }}
+          >
+            + Start New Chat
+          </button>
+        )}
       </div>
 
       {/* Messages Area */}
