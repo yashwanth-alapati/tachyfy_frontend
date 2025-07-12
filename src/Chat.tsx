@@ -36,6 +36,7 @@ const Chat: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Load selected tools from localStorage
   useEffect(() => {
@@ -94,6 +95,11 @@ const Chat: React.FC = () => {
     setMessages(prev => [...prev, userMessage]);
     const currentInput = input;
     setInput("");
+    
+    // Reset textarea height after sending
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
     
     // Add timeout to fetch request (around line 82)
     const controller = new AbortController();
@@ -157,6 +163,25 @@ const Chat: React.FC = () => {
     } finally {
       setLoading(false);
       setIsSubmitting(false);
+    }
+  };
+
+  // Add this new function to handle Enter key behavior
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    
+    // Auto-expand textarea
+    const textarea = e.target;
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (input.trim() && !loading && !isSubmitting) {
+        handleSend(e);
+      }
     }
   };
 
@@ -445,7 +470,7 @@ const Chat: React.FC = () => {
           
           <form onSubmit={handleSend} style={{ 
             display: "flex", 
-            alignItems: "center",
+            alignItems: "flex-end", // Changed from "center" to "flex-end"
             background: "#f8f9fa",
             border: "1px solid #e5e7eb",
             borderRadius: 8,
@@ -662,10 +687,12 @@ const Chat: React.FC = () => {
               )}
             </div>
 
-            {/* Input Field */}
-            <input
+            {/* Auto-expanding Input Field */}
+            <textarea
+              ref={textareaRef}
               value={input}
-              onChange={e => setInput(e.target.value)}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
               style={{ 
                 flex: 1,
                 padding: "10px 0", 
@@ -673,10 +700,17 @@ const Chat: React.FC = () => {
                 fontSize: 16,
                 outline: "none",
                 background: "transparent",
-                color: "#374151"
+                color: "#374151",
+                resize: "none",
+                minHeight: "24px",
+                maxHeight: "120px", // About 5 lines
+                overflow: "hidden",
+                lineHeight: "1.5",
+                fontFamily: "inherit"
               }}
-              placeholder={loading ? "Waiting for response..." : "Ask your question..."}
-              disabled={false} // Always allow typing
+              placeholder={loading ? "Waiting for response..." : "Ask anything"}
+              disabled={false}
+              rows={1}
             />
             
             {/* Send Button */}

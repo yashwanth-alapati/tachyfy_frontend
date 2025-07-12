@@ -33,6 +33,7 @@ const TaskChat: React.FC = () => {
   const toolsButtonRef = useRef<HTMLButtonElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastFailedMessage, setLastFailedMessage] = useState<string>("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Load selected tools from localStorage on mount
   useEffect(() => {
@@ -149,6 +150,26 @@ const TaskChat: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Add this new function to handle Enter key behavior
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (input.trim() && !loading) {
+        handleSend(e);
+      }
+    }
+  };
+
+  // Add this function to handle auto-expanding textarea
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    
+    // Auto-expand textarea
+    const textarea = e.target;
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
   };
 
   const handleToolToggle = (toolId: string) => {
@@ -325,7 +346,7 @@ const TaskChat: React.FC = () => {
         }}>
           <form onSubmit={handleSend} style={{ 
             display: "flex", 
-            alignItems: "center",
+            alignItems: "flex-end", // Changed from "center" to "flex-end"
             background: "#f8f9fa",
             border: "1px solid #e5e7eb",
             borderRadius: 8,
@@ -542,10 +563,12 @@ const TaskChat: React.FC = () => {
               )}
             </div>
 
-            {/* Input Field */}
-            <input
+            {/* Auto-expanding Input Field */}
+            <textarea
+              ref={textareaRef}
               value={input}
-              onChange={e => setInput(e.target.value)}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
               style={{ 
                 flex: 1,
                 padding: "10px 0", 
@@ -553,10 +576,17 @@ const TaskChat: React.FC = () => {
                 fontSize: 16,
                 outline: "none",
                 background: "transparent",
-                color: "#374151"
+                color: "#374151",
+                resize: "none",
+                minHeight: "24px",
+                maxHeight: "120px", // About 5 lines
+                overflow: "hidden",
+                lineHeight: "1.5",
+                fontFamily: "inherit"
               }}
-              placeholder="Ask your question..."
+              placeholder="Ask anything"
               disabled={loading}
+              rows={1}
             />
             
             {/* Send Button */}
