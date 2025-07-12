@@ -39,16 +39,16 @@ const Chat: React.FC = () => {
       return;
     }
     setLoading(true);
+    setIsSubmitting(true);
     
     // Add user message to display immediately
     const userMessage = { role: "user", message: input };
     setMessages(prev => [...prev, userMessage]);
     const currentInput = input; // Store current input
     setInput(""); // Clear input immediately
-    setIsSubmitting(true);
     
     try {
-      // ✅ Build URL with session_id if we have one
+      // Build URL with session_id if we have one
       let url = `${API_BASE}/tasks`;
       if (currentSessionId) {
         url += `?session_id=${currentSessionId}`;
@@ -65,16 +65,19 @@ const Chat: React.FC = () => {
       }
       
       const newTask = await res.json();
+      console.log("📧 Chat response:", newTask); // DEBUG
+      console.log("📧 Messages in response:", newTask.messages); // DEBUG
       
-      // ✅ Store session ID from first response
+      // Store session ID from first response
       if (!currentSessionId && newTask.session_id) {
         setCurrentSessionId(newTask.session_id);
       }
       
-      // ✅ FIXED: Only update messages if we get a valid response
-      if (newTask.messages && Array.isArray(newTask.messages)) {
-        setMessages(newTask.messages);
-      }
+      // ✅ FIXED: Always update messages like TaskChat does
+      setMessages(newTask.messages || []);
+      console.log("📧 Messages state updated"); // DEBUG
+      
+      setError(null);
       
     } catch (error) {
       console.error("Error sending message:", error);
