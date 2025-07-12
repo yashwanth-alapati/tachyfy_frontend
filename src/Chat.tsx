@@ -165,7 +165,7 @@ const Chat: React.FC = () => {
           color: "#222", 
           marginBottom: 8 
         }}>
-          Chat with easydoAI
+          Chat with Tachify
         </h1>
         <p style={{ color: "#666", fontSize: 16 }}>
           Ask me anything! I can help with emails, calendar, tasks, and much more.
@@ -454,7 +454,7 @@ const Chat: React.FC = () => {
             background: "transparent",
             color: "#374151"
           }}
-          placeholder="Message easydoAI..."
+          placeholder="Message Tachify..."
           disabled={loading}
         />
         
