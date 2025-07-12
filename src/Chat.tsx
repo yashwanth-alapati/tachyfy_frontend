@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "./AuthContext";
+import { useNotifications } from "./NotificationContext";
 import { useNavigate } from "react-router-dom";
 
 const API_BASE = process.env.REACT_APP_API_URL?.replace(/\/$/, '') || '';
@@ -20,6 +21,7 @@ const tools = [
 
 const Chat: React.FC = () => {
   const { user } = useAuth();
+  const { setCurrentActiveSession } = useNotifications();
   const navigate = useNavigate();
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<any[]>([]);
@@ -38,6 +40,18 @@ const Chat: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Update the current active session for notifications
+  useEffect(() => {
+    setCurrentActiveSession(currentSessionId);
+  }, [currentSessionId, setCurrentActiveSession]);
+
+  // Clean up when component unmounts
+  useEffect(() => {
+    return () => {
+      setCurrentActiveSession(null);
+    };
+  }, [setCurrentActiveSession]);
+
   // Load selected tools from localStorage
   useEffect(() => {
     const saved = localStorage.getItem('selectedTools_chat');
@@ -55,7 +69,7 @@ const Chat: React.FC = () => {
     localStorage.setItem('selectedTools_chat', JSON.stringify(selectedTools));
   }, [selectedTools]);
 
-  // Add function to load session messages
+  // Load session messages
   const loadSessionMessages = useCallback(async (sessionId: string) => {
     if (!user) return;
     try {
@@ -69,16 +83,22 @@ const Chat: React.FC = () => {
     }
   }, [user]);
 
-  // Add this new useEffect to restore session on page load (after the existing useEffects)
+  // Restore session on page load
   useEffect(() => {
-    // Restore session ID from localStorage
     const savedSessionId = localStorage.getItem('currentChatSessionId');
     if (savedSessionId && !currentSessionId) {
       setCurrentSessionId(savedSessionId);
-      // Load the existing session messages
       loadSessionMessages(savedSessionId);
     }
   }, [currentSessionId, loadSessionMessages]);
+
+  // Emit custom event for task state updates
+  const emitTaskUpdate = (sessionId: string, status: string, state: number) => {
+    const event = new CustomEvent('taskStateUpdate', {
+      detail: { taskId: sessionId, status, state }
+    });
+    window.dispatchEvent(event);
+  };
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,7 +121,6 @@ const Chat: React.FC = () => {
       textareaRef.current.style.height = 'auto';
     }
     
-    // Add timeout to fetch request (around line 82)
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes timeout
 
@@ -121,12 +140,12 @@ const Chat: React.FC = () => {
         body: JSON.stringify({ 
           message: currentInput, 
           email: user,
-          selected_tools: backendToolNames // Send selected tools to backend
+          selected_tools: backendToolNames
         }),
-        signal: controller.signal // Add abort signal
+        signal: controller.signal
       });
       
-      clearTimeout(timeoutId); // Clear timeout if request succeeds
+      clearTimeout(timeoutId);
       
       if (!res.ok) {
         throw new Error(`Server responded with ${res.status}`);
@@ -135,24 +154,31 @@ const Chat: React.FC = () => {
       const newTask = await res.json();
       console.log("📧 Chat response:", newTask);
       
-      // Update the session ID storage (modify the existing success block in handleSend)
       // Store session ID from first response
+      let sessionId = currentSessionId;
       if (!currentSessionId && newTask.session_id) {
-        setCurrentSessionId(newTask.session_id);
-        // Save to localStorage for persistence
-        localStorage.setItem('currentChatSessionId', newTask.session_id);
+        sessionId = newTask.session_id;
+        setCurrentSessionId(sessionId);
+        if (sessionId) {
+          localStorage.setItem('currentChatSessionId', sessionId);
+        }
       }
       
       setMessages(newTask.messages || []);
       setError(null);
       
+      // Emit task update event - AI has responded, so task needs permission
+      if (sessionId) {
+        emitTaskUpdate(sessionId, 'needs_permission', 0);
+      }
+      
     } catch (error: any) {
-      clearTimeout(timeoutId); // Always clear timeout
+      clearTimeout(timeoutId);
       
       if (error.name === 'AbortError') {
         console.log("Request timed out - but may still be processing");
         setError("Request is taking longer than expected. Please check back in a moment.");
-        setLastFailedMessage(currentInput); // Store failed message
+        setLastFailedMessage(currentInput);
       } else {
         console.error("Error sending message:", error);
         setError("Failed to send message. Please try again.");
@@ -657,7 +683,7 @@ const Chat: React.FC = () => {
                         }}>
                           {selectedTools.includes(tool.id) && (
                             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
-                              <path d="M20 6L9 17l-5-5"/>
+                              <path d="M20 6L9 17l-5-5-9-4z"/>
                             </svg>
                           )}
                         </div>

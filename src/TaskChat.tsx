@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
+import { useNotifications } from "./NotificationContext";
 
 const API_BASE = process.env.REACT_APP_API_URL;
 
@@ -22,18 +23,41 @@ const TaskChat: React.FC = () => {
   const { id } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { setCurrentActiveSession, addNotification } = useNotifications();
   const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState("");
   const [showTools, setShowTools] = useState(false);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [selectedTools, setSelectedTools] = useState<string[]>([]);
+  const [taskStatus, setTaskStatus] = useState<string>("unknown");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toolsDropdownRef = useRef<HTMLDivElement>(null);
   const toolsButtonRef = useRef<HTMLButtonElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastFailedMessage, setLastFailedMessage] = useState<string>("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Set this as the current active session when component mounts
+  useEffect(() => {
+    if (id) {
+      setCurrentActiveSession(id);
+    }
+    
+    // Clean up when component unmounts
+    return () => {
+      setCurrentActiveSession(null);
+    };
+  }, [id, setCurrentActiveSession]);
+
+  // Emit custom event for task state updates
+  const emitTaskUpdate = (sessionId: string, status: string, state: number) => {
+    console.log('TaskChat emitting task update:', { sessionId, status, state });
+    const event = new CustomEvent('taskStateUpdate', {
+      detail: { taskId: sessionId, status, state }
+    });
+    window.dispatchEvent(event);
+  };
 
   // Load selected tools from localStorage on mount
   useEffect(() => {
@@ -76,26 +100,67 @@ const TaskChat: React.FC = () => {
     };
   }, [showTools]);
 
+  // Fetch messages and task status
   useEffect(() => {
     if (!user) {
       navigate("/login");
       return;
     }
-    const fetchMessages = async () => {
+
+    const fetchData = async () => {
       try {
-        const res = await fetch(`${API_BASE}/tasks/${id}/messages`);
-        if (!res.ok) {
-          throw new Error(`Server responded with ${res.status}`);
+        // Fetch messages
+        const messagesRes = await fetch(`${API_BASE}/tasks/${id}/messages`);
+        if (!messagesRes.ok) {
+          throw new Error(`Server responded with ${messagesRes.status}`);
         }
-        const data = await res.json();
-        setMessages(data.messages || []); 
+        const messagesData = await messagesRes.json();
+        setMessages(messagesData.messages || []);
+
+        // Fetch task status
+        const tasksRes = await fetch(`${API_BASE}/tasks?email=${encodeURIComponent(user)}`);
+        if (tasksRes.ok) {
+          const tasksData = await tasksRes.json();
+          const currentTask = tasksData.find((task: any) => task.id === id);
+          if (currentTask) {
+            setTaskStatus(currentTask.status);
+          }
+        }
       } catch (err: any) {
-        console.error("Error fetching messages:", err);
+        console.error("Error fetching data:", err);
       }
     };
 
-    fetchMessages();
+    fetchData();
   }, [id, user, navigate]);
+
+  const handleCompleteTask = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/tasks/${id}/complete`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: user }),
+      });
+
+      if (response.ok) {
+        setTaskStatus('complete');
+        addNotification('Task completed successfully!', 'success');
+        
+        // Emit task update event for task completion
+        if (id) {
+          emitTaskUpdate(id, 'complete', 1);
+        }
+      } else {
+        console.error('Failed to complete task');
+        addNotification('Failed to complete task. Please try again.', 'error');
+      }
+    } catch (error) {
+      console.error('Error completing task:', error);
+      addNotification('Error completing task. Please try again.', 'error');
+    }
+  };
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,6 +170,8 @@ const TaskChat: React.FC = () => {
     // Add user message to display immediately
     const userMessage = { role: "user", message: input };
     setMessages(prev => [...prev, userMessage]);
+    const currentInput = input;
+    setInput("");
     
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes
@@ -117,7 +184,7 @@ const TaskChat: React.FC = () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          message: input, 
+          message: currentInput, 
           email: user,
           selected_tools: backendToolNames
         }),
@@ -132,18 +199,27 @@ const TaskChat: React.FC = () => {
 
       const data = await res.json();
       setMessages(data.messages || []);
-      setInput("");
+      setError(null);
+      
+      // Update task status to needs_permission after AI responds
+      setTaskStatus('needs_permission');
+      
+      // 🔥 EMIT TASK UPDATE EVENT - This was missing!
+      if (id) {
+        emitTaskUpdate(id, 'needs_permission', 0);
+      }
+      
     } catch (err: any) {
       clearTimeout(timeoutId);
       
       if (err.name === 'AbortError') {
         console.log("Request timed out - but may still be processing");
         setError("Request is taking longer than expected. Please check back in a moment.");
-        setLastFailedMessage(input); // Store failed message
+        setLastFailedMessage(currentInput);
       } else {
         console.error("Error sending message:", err);
         setError("Failed to send message. Please try again.");
-        setLastFailedMessage(input);
+        setLastFailedMessage(currentInput);
       }
       // Remove the user message if there was an error
       setMessages(prev => prev.slice(0, -1));
@@ -216,6 +292,63 @@ const TaskChat: React.FC = () => {
       padding: "20px",
       minHeight: "calc(100vh - 100px)"
     }}>
+      {/* Task Status Badge */}
+      <div style={{ 
+        marginBottom: 20,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between"
+      }}>
+        <div style={{
+          padding: "8px 16px",
+          borderRadius: 20,
+          fontSize: 14,
+          fontWeight: 600,
+          background: taskStatus === 'processing' ? '#dbeafe' :   // Changed from #fef3c7 to light blue
+                     taskStatus === 'needs_permission' ? '#fecaca' : 
+                     taskStatus === 'complete' ? '#d1fae5' : '#f3f4f6',
+          color: taskStatus === 'processing' ? '#2563eb' :   // Changed from #d97706 to blue
+                 taskStatus === 'needs_permission' ? '#dc2626' : 
+                 taskStatus === 'complete' ? '#059669' : '#6b7280'
+        }}>
+          {taskStatus === 'processing' ? '⏳ Processing' : 
+           taskStatus === 'needs_permission' ? '🔔 Needs Permission' : 
+           taskStatus === 'complete' ? '✅ Complete' : '❓ Unknown'}
+        </div>
+        
+        {/* Complete Task Button */}
+        {taskStatus === 'needs_permission' && (
+          <button
+            onClick={handleCompleteTask}
+            style={{
+              background: "#10B981",
+              color: "white",
+              border: "none",
+              borderRadius: 8,
+              padding: "12px 24px",
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              transition: "all 0.2s ease"
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "#059669";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "#10B981";
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M20 6L9 17l-5-5"/>
+            </svg>
+            Complete Task
+          </button>
+        )}
+      </div>
+
       {/* Messages Container */}
       <div style={{ 
         background: "#fff",
