@@ -26,10 +26,14 @@ const Chat: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toolsDropdownRef = useRef<HTMLDivElement>(null);
   const toolsButtonRef = useRef<HTMLButtonElement>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || loading) return;
+    if (!input.trim() || loading || isSubmitting) return;
     if (!user) {
       navigate("/login");
       return;
@@ -39,6 +43,9 @@ const Chat: React.FC = () => {
     // Add user message to display immediately
     const userMessage = { role: "user", message: input };
     setMessages(prev => [...prev, userMessage]);
+    const currentInput = input; // Store current input
+    setInput(""); // Clear input immediately
+    setIsSubmitting(true);
     
     try {
       // ✅ Build URL with session_id if we have one
@@ -50,8 +57,13 @@ const Chat: React.FC = () => {
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: input, email: user }),
+        body: JSON.stringify({ message: currentInput, email: user }),
       });
+      
+      if (!res.ok) {
+        throw new Error(`Server responded with ${res.status}`);
+      }
+      
       const newTask = await res.json();
       
       // ✅ Store session ID from first response
@@ -59,14 +71,19 @@ const Chat: React.FC = () => {
         setCurrentSessionId(newTask.session_id);
       }
       
-      setMessages(newTask.messages || []);
-      setInput("");
+      // ✅ FIXED: Only update messages if we get a valid response
+      if (newTask.messages && Array.isArray(newTask.messages)) {
+        setMessages(newTask.messages);
+      }
+      
     } catch (error) {
       console.error("Error sending message:", error);
+      setError("Failed to send message. Please try again.");
       // Remove the user message if there was an error
       setMessages(prev => prev.slice(0, -1));
     } finally {
       setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -126,6 +143,11 @@ const Chat: React.FC = () => {
     setInput("");
   };
   
+  // Add this effect to auto-scroll
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
   return (
     <div style={{ 
       maxWidth: 800, 
@@ -215,6 +237,23 @@ const Chat: React.FC = () => {
             padding: "16px"
           }}>
             <span>🤔 AI is thinking...</span>
+          </div>
+        )}
+        {error && (
+          <div style={{ 
+            padding: "12px", 
+            background: "#fee", 
+            color: "#c53030", 
+            borderRadius: 8, 
+            marginBottom: 16 
+          }}>
+            {error}
+            <button 
+              onClick={() => setError(null)}
+              style={{ marginLeft: 8, background: "none", border: "none", cursor: "pointer" }}
+            >
+              ×
+            </button>
           </div>
         )}
       </div>
@@ -449,6 +488,7 @@ const Chat: React.FC = () => {
           )}
         </button>
       </form>
+      <div ref={messagesEndRef} />
     </div>
   );
 };
