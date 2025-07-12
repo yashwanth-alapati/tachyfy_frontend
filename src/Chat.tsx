@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "./AuthContext";
 import { useNavigate } from "react-router-dom";
 
@@ -54,19 +54,8 @@ const Chat: React.FC = () => {
     localStorage.setItem('selectedTools_chat', JSON.stringify(selectedTools));
   }, [selectedTools]);
 
-  // Add this new useEffect to restore session on page load (after the existing useEffects)
-  useEffect(() => {
-    // Restore session ID from localStorage
-    const savedSessionId = localStorage.getItem('currentChatSessionId');
-    if (savedSessionId && !currentSessionId) {
-      setCurrentSessionId(savedSessionId);
-      // Load the existing session messages
-      loadSessionMessages(savedSessionId);
-    }
-  }, []);
-
   // Add function to load session messages
-  const loadSessionMessages = async (sessionId: string) => {
+  const loadSessionMessages = useCallback(async (sessionId: string) => {
     if (!user) return;
     try {
       const res = await fetch(`${API_BASE}/tasks/${sessionId}/messages`);
@@ -77,7 +66,18 @@ const Chat: React.FC = () => {
     } catch (error) {
       console.error("Error loading session messages:", error);
     }
-  };
+  }, [user]);
+
+  // Add this new useEffect to restore session on page load (after the existing useEffects)
+  useEffect(() => {
+    // Restore session ID from localStorage
+    const savedSessionId = localStorage.getItem('currentChatSessionId');
+    if (savedSessionId && !currentSessionId) {
+      setCurrentSessionId(savedSessionId);
+      // Load the existing session messages
+      loadSessionMessages(savedSessionId);
+    }
+  }, [currentSessionId, loadSessionMessages]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
