@@ -108,7 +108,7 @@ const Header: React.FC = () => {
           letterSpacing: 1,
         }}
       >
-        Tachify
+        Tachyfy
       </Link>
       <div style={{ display: "flex", alignItems: "center" }}>
         <Link to="/tasks" style={blackButtonStyle} onClick={handleTasksClick}>
