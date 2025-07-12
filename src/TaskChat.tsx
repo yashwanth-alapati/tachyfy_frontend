@@ -4,28 +4,50 @@ import { useAuth } from "./AuthContext";
 
 const API_BASE = process.env.REACT_APP_API_URL;
 
+// Map tool IDs to backend tool names
+const toolMappings = {
+  "gmail": "gmail_mcp",
+  "calendar": "google_calendar_mcp", 
+  "websearch": "web_search"
+};
+
 const tools = [
-  { name: "Google Calendar", id: "calendar" },
   { name: "Gmail", id: "gmail" },
-  { name: "Slack", id: "slack" },
-  { name: "Notion", id: "notion" },
-  { name: "Zoom", id: "zoom" },
+  { name: "Google Calendar", id: "calendar" },
   { name: "Web Search", id: "websearch" },
-  // Add more tools here
+  // Add more tools here as they become available
 ];
 
 const TaskChat: React.FC = () => {
   const { id } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [messages, setMessages] = useState<any[]>([]); // ✅ Ensure it's always an array
+  const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState("");
   const [showTools, setShowTools] = useState(false);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
+  const [selectedTools, setSelectedTools] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toolsDropdownRef = useRef<HTMLDivElement>(null);
   const toolsButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Load selected tools from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem(`selectedTools_${id}`);
+    if (saved) {
+      try {
+        setSelectedTools(JSON.parse(saved));
+      } catch (error) {
+        console.error("Error loading selected tools:", error);
+      }
+    }
+  }, [id]);
+
+  // Save selected tools to localStorage
+  useEffect(() => {
+    localStorage.setItem(`selectedTools_${id}`, JSON.stringify(selectedTools));
+  }, [selectedTools, id]);
 
   // Handle click outside to close tools dropdown
   useEffect(() => {
@@ -63,11 +85,9 @@ const TaskChat: React.FC = () => {
           throw new Error(`Server responded with ${res.status}`);
         }
         const data = await res.json();
-        // ✅ Expects an object: { messages: [msg1, msg2, ...] }
         setMessages(data.messages || []); 
       } catch (err: any) {
         console.error("Error fetching messages:", err);
-        // Optionally set an error state if needed
       }
     };
 
@@ -84,10 +104,17 @@ const TaskChat: React.FC = () => {
     setMessages(prev => [...prev, userMessage]);
     
     try {
+      // Convert selected tool IDs to backend tool names
+      const backendToolNames = selectedTools.map(toolId => toolMappings[toolId as keyof typeof toolMappings]).filter(Boolean);
+      
       const res = await fetch(`${API_BASE}/tasks/${id}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: input, email: user }), // ✅ Pass email
+        body: JSON.stringify({ 
+          message: input, 
+          email: user,
+          selected_tools: backendToolNames // Send selected tools to backend
+        }),
       });
 
       if (!res.ok) {
@@ -95,7 +122,7 @@ const TaskChat: React.FC = () => {
       }
 
       const data = await res.json();
-      setMessages(data.messages || []); // ✅ Gracefully handle missing messages
+      setMessages(data.messages || []);
       setInput("");
     } catch (err: any) {
       console.error("Error sending message:", err);
@@ -106,10 +133,12 @@ const TaskChat: React.FC = () => {
     }
   };
 
-  const handleToolClick = (toolName: string) => {
-    setShowTools(false);
-    setInput(prev => `[${toolName}] ` + prev);
-    setSearch("");
+  const handleToolToggle = (toolId: string) => {
+    setSelectedTools(prev => 
+      prev.includes(toolId) 
+        ? prev.filter(id => id !== toolId)
+        : [...prev, toolId]
+    );
   };
 
   const handleAttachClick = () => {
@@ -200,18 +229,17 @@ const TaskChat: React.FC = () => {
           )}
         </div>
 
-        {/* Input Form - Integrated at bottom of messages container */}
+        {/* Input Form */}
         <div style={{ 
-          borderTop: "1px solid #e5e7eb",
           padding: "16px 20px",
-          background: "#f9fafb",
+          background: "#fff",
           borderRadius: "0 0 12px 12px",
           position: "relative"
         }}>
           <form onSubmit={handleSend} style={{ 
             display: "flex", 
             alignItems: "center",
-            background: "#fff",
+            background: "#f8f9fa",
             border: "1px solid #e5e7eb",
             borderRadius: 8,
             padding: "8px 12px"
@@ -271,7 +299,8 @@ const TaskChat: React.FC = () => {
                   display: "flex",
                   alignItems: "center",
                   color: showTools ? "#374151" : "#6b7280",
-                  transition: "all 0.2s ease"
+                  transition: "all 0.2s ease",
+                  position: "relative"
                 }}
                 disabled={loading}
                 onMouseEnter={(e) => {
@@ -291,6 +320,25 @@ const TaskChat: React.FC = () => {
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
                 </svg>
+                {selectedTools.length > 0 && (
+                  <div style={{
+                    position: "absolute",
+                    top: -4,
+                    right: -4,
+                    background: "#ef4444",
+                    color: "white",
+                    borderRadius: "50%",
+                    width: 16,
+                    height: 16,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 10,
+                    fontWeight: 600
+                  }}>
+                    {selectedTools.length}
+                  </div>
+                )}
               </button>
               
               {/* Tools Dropdown */}
@@ -306,55 +354,55 @@ const TaskChat: React.FC = () => {
                     borderRadius: 12,
                     boxShadow: "0 10px 25px rgba(0,0,0,0.1)",
                     zIndex: 10,
-                    minWidth: 180,
-                    maxWidth: 200,
+                    minWidth: 250,
+                    maxWidth: 300,
                     overflow: "hidden"
                   }}
                 >
                   <div style={{ 
-                    padding: "8px 12px",
+                    padding: "12px 16px",
                     borderBottom: "1px solid #f3f4f6"
                   }}>
                     <input
                       type="text"
                       value={search}
                       onChange={e => setSearch(e.target.value)}
-                      placeholder="Search..."
+                      placeholder="Search tools..."
                       style={{
                         width: "100%",
-                        padding: "6px 8px",
+                        padding: "8px 12px",
                         borderRadius: 6,
                         border: "1px solid #e5e7eb",
-                        fontSize: 13,
-                        background: "#f9fafb",
+                        fontSize: 14,
+                        background: "#fff",
                         outline: "none"
                       }}
                       autoFocus
                     />
                   </div>
                   <div style={{ 
-                    maxHeight: "120px",
-                    overflowY: "auto"
+                    maxHeight: "200px",
+                    overflowY: "auto",
+                    padding: "8px 0"
                   }}>
                     {filteredTools.length === 0 && (
-                      <div style={{ padding: "12px", color: "#6b7280", textAlign: "center", fontSize: 13 }}>
+                      <div style={{ padding: "12px 16px", color: "#6b7280", textAlign: "center", fontSize: 13 }}>
                         No tools found
                       </div>
                     )}
                     {filteredTools.map(tool => (
                       <div
                         key={tool.id}
-                        onClick={() => handleToolClick(tool.name)}
+                        onClick={() => handleToolToggle(tool.id)}
                         style={{
-                          padding: "10px 12px",
+                          padding: "8px 16px",
                           cursor: "pointer",
-                          fontWeight: 500,
                           fontSize: 13,
                           color: "#374151",
                           transition: "background-color 0.2s ease",
                           display: "flex",
                           alignItems: "center",
-                          minHeight: "40px"
+                          gap: 12
                         }}
                         onMouseEnter={(e) => {
                           e.currentTarget.style.backgroundColor = "#f9fafb";
@@ -363,18 +411,46 @@ const TaskChat: React.FC = () => {
                           e.currentTarget.style.backgroundColor = "transparent";
                         }}
                       >
-                        <span style={{ marginRight: 6, fontSize: 14 }}>
+                        <div style={{
+                          width: 16,
+                          height: 16,
+                          border: "2px solid #e5e7eb",
+                          borderRadius: 3,
+                          background: selectedTools.includes(tool.id) ? "#38bdf8" : "#fff",
+                          borderColor: selectedTools.includes(tool.id) ? "#38bdf8" : "#e5e7eb",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0
+                        }}>
+                          {selectedTools.includes(tool.id) && (
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
+                              <path d="M20 6L9 17l-5-5"/>
+                            </svg>
+                          )}
+                        </div>
+                        <span style={{ fontSize: 14, marginRight: 8 }}>
                           {tool.id === 'gmail' ? '📧' : 
                            tool.id === 'calendar' ? '📅' : 
-                           tool.id === 'slack' ? '💬' : 
-                           tool.id === 'notion' ? '📝' : 
-                           tool.id === 'zoom' ? '🎥' : 
                            tool.id === 'websearch' ? '🔍' : '🛠️'}
                         </span>
-                        {tool.name}
+                        <span style={{ fontWeight: 500 }}>
+                          {tool.name}
+                        </span>
                       </div>
                     ))}
                   </div>
+                  {selectedTools.length > 0 && (
+                    <div style={{
+                      padding: "8px 16px",
+                      borderTop: "1px solid #f3f4f6",
+                      background: "#f9fafb",
+                      fontSize: 12,
+                      color: "#6b7280"
+                    }}>
+                      {selectedTools.length} tool{selectedTools.length !== 1 ? 's' : ''} selected
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -392,7 +468,7 @@ const TaskChat: React.FC = () => {
                 background: "transparent",
                 color: "#374151"
               }}
-              placeholder="Continue the conversation..."
+              placeholder="Ask your question..."
               disabled={loading}
             />
             
