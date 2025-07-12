@@ -327,6 +327,9 @@ const Chat: React.FC = () => {
           borderRadius: "0 0 16px 16px",
           position: "relative"
         }}>
+          {/* Error Display */}
+          {error && <div style={{ color: "red", marginBottom: 12 }}>{error}</div>}
+          
           <form onSubmit={handleSend} style={{ 
             display: "flex", 
             alignItems: "center",
