@@ -32,6 +32,7 @@ const Chat: React.FC = () => {
   const toolsDropdownRef = useRef<HTMLDivElement>(null);
   const toolsButtonRef = useRef<HTMLButtonElement>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lastFailedMessage, setLastFailedMessage] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -53,6 +54,31 @@ const Chat: React.FC = () => {
     localStorage.setItem('selectedTools_chat', JSON.stringify(selectedTools));
   }, [selectedTools]);
 
+  // Add this new useEffect to restore session on page load (after the existing useEffects)
+  useEffect(() => {
+    // Restore session ID from localStorage
+    const savedSessionId = localStorage.getItem('currentChatSessionId');
+    if (savedSessionId && !currentSessionId) {
+      setCurrentSessionId(savedSessionId);
+      // Load the existing session messages
+      loadSessionMessages(savedSessionId);
+    }
+  }, []);
+
+  // Add function to load session messages
+  const loadSessionMessages = async (sessionId: string) => {
+    if (!user) return;
+    try {
+      const res = await fetch(`${API_BASE}/tasks/${sessionId}/messages`);
+      if (res.ok) {
+        const data = await res.json();
+        setMessages(data.messages || []);
+      }
+    } catch (error) {
+      console.error("Error loading session messages:", error);
+    }
+  };
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || loading || isSubmitting) return;
@@ -69,6 +95,10 @@ const Chat: React.FC = () => {
     const currentInput = input;
     setInput("");
     
+    // Add timeout to fetch request (around line 82)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes timeout
+
     try {
       // Build URL with session_id if we have one
       let url = `${API_BASE}/tasks`;
@@ -87,7 +117,10 @@ const Chat: React.FC = () => {
           email: user,
           selected_tools: backendToolNames // Send selected tools to backend
         }),
+        signal: controller.signal // Add abort signal
       });
+      
+      clearTimeout(timeoutId); // Clear timeout if request succeeds
       
       if (!res.ok) {
         throw new Error(`Server responded with ${res.status}`);
@@ -96,17 +129,29 @@ const Chat: React.FC = () => {
       const newTask = await res.json();
       console.log("📧 Chat response:", newTask);
       
+      // Update the session ID storage (modify the existing success block in handleSend)
       // Store session ID from first response
       if (!currentSessionId && newTask.session_id) {
         setCurrentSessionId(newTask.session_id);
+        // Save to localStorage for persistence
+        localStorage.setItem('currentChatSessionId', newTask.session_id);
       }
       
       setMessages(newTask.messages || []);
       setError(null);
       
-    } catch (error) {
-      console.error("Error sending message:", error);
-      setError("Failed to send message. Please try again.");
+    } catch (error: any) {
+      clearTimeout(timeoutId); // Always clear timeout
+      
+      if (error.name === 'AbortError') {
+        console.log("Request timed out - but may still be processing");
+        setError("Request is taking longer than expected. Please check back in a moment.");
+        setLastFailedMessage(currentInput); // Store failed message
+      } else {
+        console.error("Error sending message:", error);
+        setError("Failed to send message. Please try again.");
+        setLastFailedMessage(currentInput);
+      }
       // Remove the user message if there was an error
       setMessages(prev => prev.slice(0, -1));
     } finally {
@@ -170,12 +215,24 @@ const Chat: React.FC = () => {
     setCurrentSessionId(null);
     setMessages([]);
     setInput("");
+    setError(null);
+    // Clear from localStorage
+    localStorage.removeItem('currentChatSessionId');
   };
   
   // Add this effect to auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  const retryLastMessage = async () => {
+    if (lastFailedMessage) {
+      setInput(lastFailedMessage);
+      setLastFailedMessage("");
+      setError(null);
+      // The user can then click send again
+    }
+  };
 
   return (
     <div style={{ 
@@ -199,14 +256,14 @@ const Chat: React.FC = () => {
             color: "#1f2937", 
             margin: 0 
           }}>
-            Chat with AI
+            Tachyfy
           </h1>
           <p style={{ 
             color: "#6b7280", 
             margin: "4px 0 0 0",
             fontSize: 16
           }}>
-            Select tools and ask questions
+            FTL: Flow Through Life
           </p>
         </div>
         
@@ -300,20 +357,48 @@ const Chat: React.FC = () => {
           
           {loading && (
             <div style={{ 
+              marginBottom: 20,
               display: "flex",
-              justifyContent: "flex-start",
-              marginBottom: 20
+              justifyContent: "flex-start"
             }}>
               <div style={{
+                maxWidth: "70%",
                 padding: "12px 16px",
                 borderRadius: 12,
                 background: "#f1f5f9",
-                color: "#64748b",
-                fontSize: 14,
-                fontStyle: "italic"
+                display: "flex",
+                alignItems: "center",
+                gap: 8
               }}>
-                🤔 AI is thinking...
+                {/* Simple spinning loader */}
+                <div style={{
+                  width: 16,
+                  height: 16,
+                  border: "2px solid #e2e8f0",
+                  borderTopColor: "#64748b",
+                  borderRadius: "50%",
+                  animation: "spin 1s linear infinite"
+                }} />
+                <div style={{ 
+                  fontSize: 12, 
+                  fontWeight: 600, 
+                  color: "#64748b"
+                }}>
+                  AI Assistant
+                </div>
               </div>
+            </div>
+          )}
+          
+          {loading && (
+            <div style={{
+              fontSize: 11,
+              color: "#9ca3af",
+              textAlign: "center",
+              marginTop: 8,
+              fontStyle: "italic"
+            }}>
+              💡 If this takes too long, you can refresh the page to check for responses
             </div>
           )}
           
@@ -328,7 +413,35 @@ const Chat: React.FC = () => {
           position: "relative"
         }}>
           {/* Error Display */}
-          {error && <div style={{ color: "red", marginBottom: 12 }}>{error}</div>}
+          {error && (
+            <div style={{ 
+              color: "red", 
+              marginBottom: 12,
+              padding: "12px",
+              background: "#fef2f2",
+              borderRadius: 8,
+              border: "1px solid #fecaca"
+            }}>
+              <div>{error}</div>
+              {lastFailedMessage && (
+                <button
+                  onClick={retryLastMessage}
+                  style={{
+                    marginTop: 8,
+                    padding: "4px 8px",
+                    background: "#dc2626",
+                    color: "white",
+                    border: "none",
+                    borderRadius: 4,
+                    cursor: "pointer",
+                    fontSize: 12
+                  }}
+                >
+                  🔄 Retry Message
+                </button>
+              )}
+            </div>
+          )}
           
           <form onSubmit={handleSend} style={{ 
             display: "flex", 
@@ -562,8 +675,8 @@ const Chat: React.FC = () => {
                 background: "transparent",
                 color: "#374151"
               }}
-              placeholder="Ask your question..."
-              disabled={loading}
+              placeholder={loading ? "Waiting for response..." : "Ask your question..."}
+              disabled={false} // Always allow typing
             />
             
             {/* Send Button */}
@@ -572,17 +685,17 @@ const Chat: React.FC = () => {
               style={{ 
                 padding: "8px",
                 borderRadius: 6,
-                background: input.trim() && !loading ? "#222" : "#e5e7eb",
-                color: input.trim() && !loading ? "#fff" : "#9ca3af",
+                background: (input.trim() && !loading && !isSubmitting) ? "#222" : "#e5e7eb",
+                color: (input.trim() && !loading && !isSubmitting) ? "#fff" : "#9ca3af",
                 border: "none",
-                cursor: input.trim() && !loading ? "pointer" : "not-allowed",
+                cursor: (input.trim() && !loading && !isSubmitting) ? "pointer" : "not-allowed",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 transition: "all 0.2s ease",
                 marginLeft: 8
               }} 
-              disabled={!input.trim() || loading}
+              disabled={!input.trim() || loading || isSubmitting}
             >
               {loading ? (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin">

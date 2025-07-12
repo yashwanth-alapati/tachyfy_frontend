@@ -31,6 +31,8 @@ const TaskChat: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toolsDropdownRef = useRef<HTMLDivElement>(null);
   const toolsButtonRef = useRef<HTMLButtonElement>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [lastFailedMessage, setLastFailedMessage] = useState<string>("");
 
   // Load selected tools from localStorage on mount
   useEffect(() => {
@@ -103,6 +105,9 @@ const TaskChat: React.FC = () => {
     const userMessage = { role: "user", message: input };
     setMessages(prev => [...prev, userMessage]);
     
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes
+
     try {
       // Convert selected tool IDs to backend tool names
       const backendToolNames = selectedTools.map(toolId => toolMappings[toolId as keyof typeof toolMappings]).filter(Boolean);
@@ -113,9 +118,12 @@ const TaskChat: React.FC = () => {
         body: JSON.stringify({ 
           message: input, 
           email: user,
-          selected_tools: backendToolNames // Send selected tools to backend
+          selected_tools: backendToolNames
         }),
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
 
       if (!res.ok) {
         throw new Error(`Server responded with ${res.status}`);
@@ -125,7 +133,17 @@ const TaskChat: React.FC = () => {
       setMessages(data.messages || []);
       setInput("");
     } catch (err: any) {
-      console.error("Error sending message:", err);
+      clearTimeout(timeoutId);
+      
+      if (err.name === 'AbortError') {
+        console.log("Request timed out - but may still be processing");
+        setError("Request is taking longer than expected. Please check back in a moment.");
+        setLastFailedMessage(input); // Store failed message
+      } else {
+        console.error("Error sending message:", err);
+        setError("Failed to send message. Please try again.");
+        setLastFailedMessage(input);
+      }
       // Remove the user message if there was an error
       setMessages(prev => prev.slice(0, -1));
     } finally {
@@ -159,6 +177,15 @@ const TaskChat: React.FC = () => {
   const filteredTools = tools.filter(tool =>
     tool.name.toLowerCase().includes(search.toLowerCase())
   );
+
+  const retryLastMessage = async () => {
+    if (lastFailedMessage) {
+      setInput(lastFailedMessage);
+      setLastFailedMessage("");
+      setError(null);
+      // The user can then click send again
+    }
+  };
 
   return (
     <div style={{ 
@@ -218,13 +245,73 @@ const TaskChat: React.FC = () => {
           ))}
           {loading && (
             <div style={{ 
-              color: "#888", 
-              fontStyle: "italic", 
-              marginTop: 12,
-              textAlign: "center",
-              padding: "16px"
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "flex-start",
+              marginBottom: 20
             }}>
-              <span>🤔 AI is thinking...</span>
+              <div style={{
+                padding: "16px 20px",
+                borderRadius: 12,
+                background: "#f1f5f9",
+                color: "#64748b",
+                fontSize: 14,
+                textAlign: "center",
+                minWidth: "250px"
+              }}>
+                <div style={{ marginBottom: 8 }}>🤔 AI is thinking...</div>
+                <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                  {selectedTools.length > 0 
+                    ? `Using tools: ${selectedTools.join(", ")}`
+                    : "Processing your request"
+                  }
+                </div>
+                <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>
+                  This may take up to 2 minutes
+                </div>
+              </div>
+            </div>
+          )}
+          {/* Error Display */}
+          {error && (
+            <div style={{ 
+              color: "red", 
+              marginBottom: 12,
+              padding: "12px",
+              background: "#fef2f2",
+              borderRadius: 8,
+              border: "1px solid #fecaca"
+            }}>
+              <div>{error}</div>
+              {lastFailedMessage && (
+                <button
+                  onClick={retryLastMessage}
+                  style={{
+                    marginTop: 8,
+                    padding: "4px 8px",
+                    background: "#dc2626",
+                    color: "white",
+                    border: "none",
+                    borderRadius: 4,
+                    cursor: "pointer",
+                    fontSize: 12
+                  }}
+                >
+                  🔄 Retry Message
+                </button>
+              )}
+            </div>
+          )}
+          {loading && (
+            <div style={{
+              fontSize: 11,
+              color: "#9ca3af",
+              textAlign: "center",
+              marginTop: 8,
+              fontStyle: "italic"
+            }}>
+              💡 If this takes too long, you can refresh the page to check for responses
             </div>
           )}
         </div>
