@@ -111,37 +111,37 @@ const Header: React.FC = () => {
         Tachyfy
       </Link>
       <div style={{ display: "flex", alignItems: "center" }}>
-        <Link to="/tasks" style={blackButtonStyle} onClick={handleTasksClick}>
-          My Tasks
-        </Link>
         {user ? (
           <div style={{ position: "relative" }}>
             <button
-              onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
               style={profileButtonStyle}
-              onBlur={() => {
-                setTimeout(() => setIsProfileDropdownOpen(false), 150);
-              }}
+              onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
             >
-              <div
-                style={{
-                  width: 24,
-                  height: 24,
-                  borderRadius: "50%",
-                  background: "#222",
-                  color: "#f7df02",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 10,
-                  fontWeight: 700,
-                  marginRight: 8
-                }}
-              >
+              <div style={{
+                width: 28,
+                height: 28,
+                borderRadius: "50%",
+                background: "#222",
+                color: "#f7df02",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 600,
+                fontSize: 12,
+                marginRight: 8
+              }}>
                 {getInitials(user)}
               </div>
-              {user}
-              <span style={{ marginLeft: 4, fontSize: 12 }}>▼</span>
+              <span style={{ marginRight: 4 }}>{user.split('@')[0]}</span>
+              <svg 
+                width="12" 
+                height="12" 
+                fill="currentColor" 
+                viewBox="0 0 20 20"
+                style={{ transform: isProfileDropdownOpen ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.2s' }}
+              >
+                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
             </button>
             
             {isProfileDropdownOpen && (
