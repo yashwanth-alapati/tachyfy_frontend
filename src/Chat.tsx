@@ -400,7 +400,9 @@ const Chat: React.FC = () => {
                   lineHeight: 1.6,
                   fontSize: 14
                 }}>
-                  {msg.message}
+                  {typeof msg.message === 'string' ? msg.message :
+                   typeof msg.message === 'object' ? JSON.stringify(msg.message) :
+                   String(msg.message)}
                 </div>
               </div>
             </div>
