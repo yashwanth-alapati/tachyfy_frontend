@@ -60,14 +60,6 @@ const Header: React.FC = () => {
     transition: "background-color 0.2s"
   };
 
-  // If not logged in, clicking Tasks redirects to login
-  const handleTasksClick = (e: React.MouseEvent) => {
-    if (!user) {
-      e.preventDefault();
-      navigate("/login");
-    }
-  };
-
   const handleLogout = () => {
     logout();
     setIsProfileDropdownOpen(false);
