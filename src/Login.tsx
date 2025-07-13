@@ -27,7 +27,7 @@ const Login: React.FC = () => {
       } else {
         setSuccess("Login successful!");
         login(email);
-        navigate("/tasks");
+        navigate("/");
       }
     } catch (err) {
       setError("Network error");
