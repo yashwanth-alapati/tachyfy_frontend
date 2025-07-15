@@ -76,14 +76,13 @@ const Home: React.FC = () => {
   // Chat input state (shared across all chats)
   const [input, setInput] = useState("");
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-  const [showTools, setShowTools] = useState(false);
-  const [search, setSearch] = useState("");
   const [isCreatingNewTask, setIsCreatingNewTask] = useState(false); // Add this new state
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const toolsDropdownRef = useRef<HTMLDivElement>(null);
-  const toolsButtonRef = useRef<HTMLButtonElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Add polling state
+  const [isPolling, setIsPolling] = useState(false);
 
   // Save panel width to localStorage
   useEffect(() => {
@@ -193,10 +192,14 @@ const Home: React.FC = () => {
         updateCurrentState({ selectedTools: savedTools });
       } catch (error) {
         console.error("Error loading selected tools:", error);
+        // If loading fails, auto-select all tools
+        const allToolIds = tools.map(tool => tool.id);
+        updateCurrentState({ selectedTools: allToolIds });
       }
-    } else if (currentState.selectedTools.length === 0) {
-      // Only reset if no tools are already selected
-      updateCurrentState({ selectedTools: [] });
+    } else {
+      // Auto-select all tools by default
+      const allToolIds = tools.map(tool => tool.id);
+      updateCurrentState({ selectedTools: allToolIds });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTaskId]);
@@ -303,14 +306,29 @@ const Home: React.FC = () => {
       
       console.log('Home received task update:', { taskId, status, state });
       
-      // Update task status and clear loading state for that specific task
-      setTasks(prevTasks => 
-        prevTasks.map(task => 
-          task.id === taskId 
-            ? { ...task, status, state }
-            : task
-        )
-      );
+      setTasks(prevTasks => {
+        // Check if task already exists in the list
+        const existingTaskIndex = prevTasks.findIndex(task => task.id === taskId);
+        
+        if (existingTaskIndex >= 0) {
+          // Update existing task
+          return prevTasks.map(task => 
+            task.id === taskId 
+              ? { ...task, status, state }
+              : task
+          );
+        } else {
+          // Add new task to the list immediately (for rapid task creation)
+          const newTask: Task = {
+            id: taskId,
+            title: `Task ${taskId.slice(-8)}`, // Use last 8 chars of ID as temp title
+            status: status,
+            state: state,
+            created_at: new Date().toISOString()
+          };
+          return [newTask, ...prevTasks]; // Add to the beginning
+        }
+      });
 
       // Clear loading state for the specific task
       setTaskStates(prev => ({
@@ -327,10 +345,16 @@ const Home: React.FC = () => {
         }
       }));
       
-      // Then fetch fresh data from server to ensure accuracy
-      setTimeout(() => {
-        fetchTasks();
-      }, 500);
+      // DELAY the fetchTasks call to avoid overriding the immediate status update
+      // Only fetch for new tasks to get accurate titles, or delay for existing tasks
+      const existingTask = tasks.find(t => t.id === taskId);
+      if (!existingTask) {
+        // New task - fetch immediately to get title
+        setTimeout(() => fetchTasks(), 100);
+      } else {
+        // Existing task - delay fetch to avoid race condition with backend
+        setTimeout(() => fetchTasks(), 1000);
+      }
     };
 
     window.addEventListener('taskStateUpdate', handleTaskUpdate as EventListener);
@@ -338,7 +362,7 @@ const Home: React.FC = () => {
     return () => {
       window.removeEventListener('taskStateUpdate', handleTaskUpdate as EventListener);
     };
-  }, [fetchTasks]);
+  }, [fetchTasks, tasks]);
 
   // Emit custom event for task state updates
   const emitTaskUpdate = (sessionId: string, status: string, state: number) => {
@@ -425,6 +449,9 @@ const Home: React.FC = () => {
       navigate("/login");
       return;
     }
+
+    // Start polling immediately when sending a message
+    setIsPolling(true);
 
     // Update loading state for current conversation only
     updateCurrentState({ 
@@ -516,8 +543,19 @@ const Home: React.FC = () => {
           lastFailedMessage: ""
         });
         
-        // Emit task update event - task needs permission after AI responds
-        emitTaskUpdate(selectedTaskId, 'needs_permission', 0);
+        // IMMEDIATELY update task status locally before emitting event
+        setTasks(prevTasks => 
+          prevTasks.map(task => 
+            task.id === selectedTaskId 
+              ? { ...task, status: 'needs_permission', state: 0 }
+              : task
+          )
+        );
+        
+        // Then emit task update event with a small delay to ensure local update happens first
+        setTimeout(() => {
+          emitTaskUpdate(selectedTaskId, 'needs_permission', 0);
+        }, 50);
       } else {
         // For new task, handle session creation
         let sessionId = currentSessionId;
@@ -594,9 +632,12 @@ const Home: React.FC = () => {
           setIsCreatingNewTask(false);
         }
         
-        // Emit task update event
-        if (sessionId && data.status && typeof data.state === 'number') {
-          emitTaskUpdate(sessionId, data.status, data.state);
+        // Emit task update event with delay for new tasks
+        if (sessionId && sessionId.trim() !== '' && data.status && typeof data.state === 'number') {
+          const validSessionId = sessionId; // TypeScript will know this is not null
+          setTimeout(() => {
+            emitTaskUpdate(validSessionId, data.status, data.state);
+          }, 50);
         }
       }
       
@@ -643,15 +684,6 @@ const Home: React.FC = () => {
     }
   };
 
-  const handleToolToggle = (toolId: string) => {
-    const currentState = getCurrentState();
-    const newSelectedTools = currentState.selectedTools.includes(toolId) 
-      ? currentState.selectedTools.filter(id => id !== toolId)
-      : [...currentState.selectedTools, toolId];
-    
-    updateCurrentState({ selectedTools: newSelectedTools });
-  };
-
   const handleAttachClick = () => {
     if (fileInputRef.current) {
       fileInputRef.current.click();
@@ -665,35 +697,6 @@ const Home: React.FC = () => {
     }
   };
 
-  // Filter tools based on search
-  const filteredTools = tools.filter(tool =>
-    tool.name.toLowerCase().includes(search.toLowerCase())
-  );
-
-  // Handle click outside to close tools dropdown
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        showTools &&
-        toolsDropdownRef.current &&
-        toolsButtonRef.current &&
-        !toolsDropdownRef.current.contains(event.target as Node) &&
-        !toolsButtonRef.current.contains(event.target as Node)
-      ) {
-        setShowTools(false);
-        setSearch("");
-      }
-    };
-
-    if (showTools) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showTools]);
-  
   // Add this effect to auto-scroll
   const currentStateMessages = getCurrentState().messages;
   useEffect(() => {
@@ -730,6 +733,65 @@ const Home: React.FC = () => {
   // Check if we're creating a new task (in new chat mode and processing)
   const isCreatingNewTaskVisible = isCreatingNewTask || (!selectedTaskId && (newChatState.loading || newChatState.isSubmitting));
 
+  // Add polling effect
+  useEffect(() => {
+    if (!user) return;
+
+    // Start polling when there are processing tasks
+    const hasProcessingTasks = tasks.some(task => task.status === "processing");
+    const hasCurrentProcessing = selectedTaskId && getCurrentState().loading;
+    
+    if (hasProcessingTasks || hasCurrentProcessing || isCreatingNewTask) {
+      setIsPolling(true);
+      
+      const pollInterval = setInterval(async () => {
+        console.log("🔄 Polling for task updates...");
+        
+        try {
+          // Fetch latest task states
+          const response = await fetch(`${API_BASE}/tasks?email=${encodeURIComponent(user)}`);
+          if (response.ok) {
+            const latestTasks = await response.json();
+            
+            // Check for status changes
+            setTasks(prevTasks => {
+              const updatedTasks = latestTasks.sort((a: Task, b: Task) => 
+                new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+              );
+              
+              // Emit events for status changes
+              updatedTasks.forEach((newTask: Task) => {
+                const existingTask = prevTasks.find(t => t.id === newTask.id);
+                if (existingTask && existingTask.status !== newTask.status) {
+                  console.log(`📡 Status change detected: ${existingTask.status} → ${newTask.status} for task ${newTask.id}`);
+                  emitTaskUpdate(newTask.id, newTask.status, newTask.state);
+                }
+              });
+              
+              return updatedTasks;
+            });
+            
+            // Stop polling if no more processing tasks
+            const stillProcessing = latestTasks.some((task: Task) => task.status === "processing");
+            if (!stillProcessing && !isCreatingNewTask && !getCurrentState().loading) {
+              console.log("🛑 No more processing tasks, stopping polling");
+              setIsPolling(false);
+            }
+          }
+        } catch (error) {
+          console.error("Error polling task updates:", error);
+        }
+      }, 2000); // Poll every 2 seconds
+
+      return () => {
+        clearInterval(pollInterval);
+        setIsPolling(false);
+      };
+    } else {
+      setIsPolling(false);
+    }
+  }, [user, tasks, selectedTaskId, isCreatingNewTask, getCurrentState().loading]);
+
   if (!user) {
     return null; // Will redirect to login
   }
@@ -763,34 +825,60 @@ const Home: React.FC = () => {
           flexShrink: 0
         }}>
           <h2 style={{ margin: "0", fontSize: 20, fontWeight: 600 }}>My Tasks</h2>
-          <button
-            onClick={startNewChat}
-            style={{
-              padding: "8px 12px",
-              background: "#374151",
-              color: "white",
-              border: "none",
-              borderRadius: 6,
-              cursor: "pointer",
-              fontSize: 12,
-              fontWeight: 500,
-              transition: "all 0.2s ease",
-              display: "flex",
-              alignItems: "center",
-              gap: 6
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#111827";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "#374151";
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 5v14m-7-7h14"/>
-            </svg>
-            Create New Task
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {/* Polling indicator */}
+            {isPolling && (
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 12,
+                color: "#2563eb",
+                padding: "4px 8px",
+                background: "#eff6ff",
+                borderRadius: 12,
+                border: "1px solid #2563eb"
+              }}>
+                <div style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  background: "#2563eb",
+                  animation: "pulse 1.5s infinite"
+                }}></div>
+                Live Updates
+              </div>
+            )}
+            
+            <button
+              onClick={startNewChat}
+              style={{
+                padding: "8px 12px",
+                background: "#374151",
+                color: "white",
+                border: "none",
+                borderRadius: 6,
+                cursor: "pointer",
+                fontSize: 12,
+                fontWeight: 500,
+                transition: "all 0.2s ease",
+                display: "flex",
+                alignItems: "center",
+                gap: 6
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "#111827";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "#374151";
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 5v14m-7-7h14"/>
+              </svg>
+              Create New Task
+            </button>
+          </div>
         </div>
         
         <div style={{ 
@@ -1454,175 +1542,29 @@ const Home: React.FC = () => {
                 onChange={handleFileChange}
               />
               
-              {/* Tools Button */}
-              <button
-                ref={toolsButtonRef}
-                type="button"
-                onClick={() => setShowTools(v => !v)}
+              {/* Tools Display (Auto-selected) */}
+              <div
                 style={{
                   marginRight: 8,
-                  padding: "6px",
+                  padding: "6px 12px",
                   borderRadius: 6,
-                  border: "none",
-                  background: showTools ? "#f3f4f6" : "transparent",
-                  cursor: "pointer",
+                  border: "1px solid #e5e7eb",
+                  background: "#f8fafc",
                   display: "flex",
                   alignItems: "center",
-                  color: showTools ? "#374151" : "#6b7280",
-                  transition: "all 0.2s ease",
-                  position: "relative"
+                  color: "#374151",
+                  fontSize: 12,
+                  fontWeight: 500
                 }}
-                disabled={currentState.loading}
-                onMouseEnter={(e) => {
-                  if (!showTools) {
-                    e.currentTarget.style.background = "#f3f4f6";
-                    e.currentTarget.style.color = "#374151";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!showTools) {
-                    e.currentTarget.style.background = "transparent";
-                    e.currentTarget.style.color = "#6b7280";
-                  }
-                }}
-                title="Select tools"
+                title="All tools are automatically selected and active"
               >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 6 }}>
                   <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
                 </svg>
-                {currentState.selectedTools.length > 0 && (
-                  <div style={{
-                    position: "absolute",
-                    top: -4,
-                    right: -4,
-                    background: "#ef4444",
-                    color: "white",
-                    borderRadius: "50%",
-                    width: 16,
-                    height: 16,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 10,
-                    fontWeight: 600
-                  }}>
-                    {currentState.selectedTools.length}
-                  </div>
-                )}
-              </button>
+                <span style={{ marginRight: 8 }}>📧📅🔍</span>
+                <span>All Tools Active</span>
+              </div>
               
-              {/* Tools Dropdown */}
-              {showTools && (
-                <div 
-                  ref={toolsDropdownRef}
-                  style={{
-                    position: "absolute",
-                    left: 0,
-                    bottom: "calc(100% + 8px)",
-                    background: "#fff",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 12,
-                    boxShadow: "0 10px 25px rgba(0,0,0,0.1)",
-                    zIndex: 10,
-                    minWidth: 250,
-                    maxWidth: 300,
-                    overflow: "hidden"
-                  }}
-                >
-                  <div style={{ 
-                    padding: "12px 16px",
-                    borderBottom: "1px solid #f3f4f6"
-                  }}>
-                    <input
-                      type="text"
-                      value={search}
-                      onChange={e => setSearch(e.target.value)}
-                      placeholder="Search tools..."
-                      style={{
-                        width: "100%",
-                        padding: "8px 12px",
-                        borderRadius: 6,
-                        border: "1px solid #e5e7eb",
-                        fontSize: 14,
-                        background: "#fff",
-                        outline: "none"
-                      }}
-                      autoFocus
-                    />
-                  </div>
-                  <div style={{ 
-                    maxHeight: "200px",
-                    overflowY: "auto",
-                    padding: "8px 0"
-                  }}>
-                    {filteredTools.length === 0 && (
-                      <div style={{ padding: "12px 16px", color: "#6b7280", textAlign: "center", fontSize: 13 }}>
-                        No tools found
-                      </div>
-                    )}
-                    {filteredTools.map(tool => (
-                      <div
-                        key={tool.id}
-                        onClick={() => handleToolToggle(tool.id)}
-                        style={{
-                          padding: "8px 16px",
-                          cursor: "pointer",
-                          fontSize: 13,
-                          color: "#374151",
-                          transition: "background-color 0.2s ease",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 12
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = "#f9fafb";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = "transparent";
-                        }}
-                      >
-                        <div style={{
-                          width: 16,
-                          height: 16,
-                          border: "2px solid #e5e7eb",
-                          borderRadius: 3,
-                          background: currentState.selectedTools.includes(tool.id) ? "#38bdf8" : "#fff",
-                          borderColor: currentState.selectedTools.includes(tool.id) ? "#38bdf8" : "#e5e7eb",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          flexShrink: 0
-                        }}>
-                          {currentState.selectedTools.includes(tool.id) && (
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
-                              <path d="M20 6L9 17l-5-5-9-4z"/>
-                            </svg>
-                          )}
-                        </div>
-                        <span style={{ fontSize: 14, marginRight: 8 }}>
-                          {tool.id === 'gmail' ? '📧' : 
-                           tool.id === 'calendar' ? '📅' : 
-                           tool.id === 'websearch' ? '🔍' : '🛠️'}
-                        </span>
-                        <span style={{ fontWeight: 500 }}>
-                          {tool.name}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  {currentState.selectedTools.length > 0 && (
-                    <div style={{
-                      padding: "8px 16px",
-                      borderTop: "1px solid #f3f4f6",
-                      background: "#f9fafb",
-                      fontSize: 12,
-                      color: "#6b7280"
-                    }}>
-                      {currentState.selectedTools.length} tool{currentState.selectedTools.length !== 1 ? 's' : ''} selected
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
 
             {/* Auto-expanding Input Field */}

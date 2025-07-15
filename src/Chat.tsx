@@ -27,8 +27,6 @@ const Chat: React.FC = () => {
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-  const [showTools, setShowTools] = useState(false);
-  const [search, setSearch] = useState("");
   const [selectedTools, setSelectedTools] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toolsDropdownRef = useRef<HTMLDivElement>(null);
@@ -68,6 +66,26 @@ const Chat: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('selectedTools_chat', JSON.stringify(selectedTools));
   }, [selectedTools]);
+
+  // MODIFY tool loading to auto-select all tools
+  useEffect(() => {
+    const saved = localStorage.getItem('selectedTools_chat');
+    if (saved) {
+      try {
+        const savedTools = JSON.parse(saved);
+        setSelectedTools(savedTools);
+      } catch (error) {
+        console.error("Error loading selected tools:", error);
+        // If loading fails, auto-select all tools
+        const allToolIds = tools.map(tool => tool.id);
+        setSelectedTools(allToolIds);
+      }
+    } else {
+      // Auto-select all tools by default
+      const allToolIds = tools.map(tool => tool.id);
+      setSelectedTools(allToolIds);
+    }
+  }, []);
 
   // Load session messages
   const loadSessionMessages = useCallback(async (sessionId: string) => {
@@ -167,9 +185,12 @@ const Chat: React.FC = () => {
       setMessages(newTask.messages || []);
       setError(null);
       
-      // Emit task update event - AI has responded, so task needs permission
-      if (sessionId) {
-        emitTaskUpdate(sessionId, 'needs_permission', 0);
+      // Emit task update event with delay - AI has responded, so task needs permission
+      if (sessionId && sessionId.trim() !== '') {
+        const validSessionId = sessionId; // TypeScript will know this is not null
+        setTimeout(() => {
+          emitTaskUpdate(validSessionId, 'needs_permission', 0);
+        }, 50);
       }
       
     } catch (error: any) {
@@ -211,14 +232,6 @@ const Chat: React.FC = () => {
     }
   };
 
-  const handleToolToggle = (toolId: string) => {
-    setSelectedTools(prev => 
-      prev.includes(toolId) 
-        ? prev.filter(id => id !== toolId)
-        : [...prev, toolId]
-    );
-  };
-
   const handleAttachClick = () => {
     if (fileInputRef.current) {
       fileInputRef.current.click();
@@ -231,35 +244,6 @@ const Chat: React.FC = () => {
       alert(`Selected file: ${file.name}`);
     }
   };
-
-  // Filter tools based on search
-  const filteredTools = tools.filter(tool =>
-    tool.name.toLowerCase().includes(search.toLowerCase())
-  );
-
-  // Handle click outside to close tools dropdown
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        showTools &&
-        toolsDropdownRef.current &&
-        toolsButtonRef.current &&
-        !toolsDropdownRef.current.contains(event.target as Node) &&
-        !toolsButtonRef.current.contains(event.target as Node)
-      ) {
-        setShowTools(false);
-        setSearch("");
-      }
-    };
-
-    if (showTools) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showTools]);
 
   // Add function to start new chat
   const startNewChat = () => {
@@ -544,175 +528,29 @@ const Chat: React.FC = () => {
                 onChange={handleFileChange}
               />
               
-              {/* Tools Button */}
-              <button
-                ref={toolsButtonRef}
-                type="button"
-                onClick={() => setShowTools(v => !v)}
+              {/* Tools Display (Auto-selected) */}
+              <div
                 style={{
                   marginRight: 8,
-                  padding: "6px",
+                  padding: "6px 12px",
                   borderRadius: 6,
-                  border: "none",
-                  background: showTools ? "#f3f4f6" : "transparent",
-                  cursor: "pointer",
+                  border: "1px solid #e5e7eb",
+                  background: "#f8fafc",
                   display: "flex",
                   alignItems: "center",
-                  color: showTools ? "#374151" : "#6b7280",
-                  transition: "all 0.2s ease",
-                  position: "relative"
+                  color: "#374151",
+                  fontSize: 12,
+                  fontWeight: 500
                 }}
-                disabled={loading}
-                onMouseEnter={(e) => {
-                  if (!showTools) {
-                    e.currentTarget.style.background = "#f3f4f6";
-                    e.currentTarget.style.color = "#374151";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!showTools) {
-                    e.currentTarget.style.background = "transparent";
-                    e.currentTarget.style.color = "#6b7280";
-                  }
-                }}
-                title="Select tools"
+                title="All tools are automatically selected and active"
               >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 6 }}>
                   <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
                 </svg>
-                {selectedTools.length > 0 && (
-                  <div style={{
-                    position: "absolute",
-                    top: -4,
-                    right: -4,
-                    background: "#ef4444",
-                    color: "white",
-                    borderRadius: "50%",
-                    width: 16,
-                    height: 16,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 10,
-                    fontWeight: 600
-                  }}>
-                    {selectedTools.length}
-                  </div>
-                )}
-              </button>
+                <span style={{ marginRight: 8 }}>📧📅🔍</span>
+                <span>All Tools Active</span>
+              </div>
               
-              {/* Tools Dropdown */}
-              {showTools && (
-                <div 
-                  ref={toolsDropdownRef}
-                  style={{
-                    position: "absolute",
-                    left: 0,
-                    bottom: "calc(100% + 8px)",
-                    background: "#fff",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 12,
-                    boxShadow: "0 10px 25px rgba(0,0,0,0.1)",
-                    zIndex: 10,
-                    minWidth: 250,
-                    maxWidth: 300,
-                    overflow: "hidden"
-                  }}
-                >
-                  <div style={{ 
-                    padding: "12px 16px",
-                    borderBottom: "1px solid #f3f4f6"
-                  }}>
-                    <input
-                      type="text"
-                      value={search}
-                      onChange={e => setSearch(e.target.value)}
-                      placeholder="Search tools..."
-                      style={{
-                        width: "100%",
-                        padding: "8px 12px",
-                        borderRadius: 6,
-                        border: "1px solid #e5e7eb",
-                        fontSize: 14,
-                        background: "#fff",
-                        outline: "none"
-                      }}
-                      autoFocus
-                    />
-                  </div>
-                  <div style={{ 
-                    maxHeight: "200px",
-                    overflowY: "auto",
-                    padding: "8px 0"
-                  }}>
-                    {filteredTools.length === 0 && (
-                      <div style={{ padding: "12px 16px", color: "#6b7280", textAlign: "center", fontSize: 13 }}>
-                        No tools found
-                      </div>
-                    )}
-                    {filteredTools.map(tool => (
-                      <div
-                        key={tool.id}
-                        onClick={() => handleToolToggle(tool.id)}
-                        style={{
-                          padding: "8px 16px",
-                          cursor: "pointer",
-                          fontSize: 13,
-                          color: "#374151",
-                          transition: "background-color 0.2s ease",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 12
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = "#f9fafb";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = "transparent";
-                        }}
-                      >
-                        <div style={{
-                          width: 16,
-                          height: 16,
-                          border: "2px solid #e5e7eb",
-                          borderRadius: 3,
-                          background: selectedTools.includes(tool.id) ? "#38bdf8" : "#fff",
-                          borderColor: selectedTools.includes(tool.id) ? "#38bdf8" : "#e5e7eb",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          flexShrink: 0
-                        }}>
-                          {selectedTools.includes(tool.id) && (
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
-                              <path d="M20 6L9 17l-5-5-9-4z"/>
-                            </svg>
-                          )}
-                        </div>
-                        <span style={{ fontSize: 14, marginRight: 8 }}>
-                          {tool.id === 'gmail' ? '📧' : 
-                           tool.id === 'calendar' ? '📅' : 
-                           tool.id === 'websearch' ? '🔍' : '🛠️'}
-                        </span>
-                        <span style={{ fontWeight: 500 }}>
-                          {tool.name}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  {selectedTools.length > 0 && (
-                    <div style={{
-                      padding: "8px 16px",
-                      borderTop: "1px solid #f3f4f6",
-                      background: "#f9fafb",
-                      fontSize: 12,
-                      color: "#6b7280"
-                    }}>
-                      {selectedTools.length} tool{selectedTools.length !== 1 ? 's' : ''} selected
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
 
             {/* Auto-expanding Input Field */}
