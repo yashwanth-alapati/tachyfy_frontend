@@ -182,7 +182,6 @@ const Home: React.FC = () => {
 
   // Load selected tools from localStorage when task changes
   useEffect(() => {
-    const currentState = getCurrentState();
     const storageKey = selectedTaskId ? `selectedTools_${selectedTaskId}` : 'selectedTools_chat';
     const saved = localStorage.getItem(storageKey);
     
@@ -739,7 +738,8 @@ const Home: React.FC = () => {
 
     // Start polling when there are processing tasks
     const hasProcessingTasks = tasks.some(task => task.status === "processing");
-    const hasCurrentProcessing = selectedTaskId && getCurrentState().loading;
+    const currentState = getCurrentState();
+    const hasCurrentProcessing = selectedTaskId && currentState.loading;
     
     if (hasProcessingTasks || hasCurrentProcessing || isCreatingNewTask) {
       setIsPolling(true);
@@ -773,7 +773,8 @@ const Home: React.FC = () => {
             
             // Stop polling if no more processing tasks
             const stillProcessing = latestTasks.some((task: Task) => task.status === "processing");
-            if (!stillProcessing && !isCreatingNewTask && !getCurrentState().loading) {
+            const currentStateAfterUpdate = getCurrentState();
+            if (!stillProcessing && !isCreatingNewTask && !currentStateAfterUpdate.loading) {
               console.log("🛑 No more processing tasks, stopping polling");
               setIsPolling(false);
             }
@@ -790,7 +791,7 @@ const Home: React.FC = () => {
     } else {
       setIsPolling(false);
     }
-  }, [user, tasks, selectedTaskId, isCreatingNewTask, getCurrentState().loading]);
+  }, [user, tasks, selectedTaskId, isCreatingNewTask, getCurrentState]);
 
   if (!user) {
     return null; // Will redirect to login
